@@ -13,9 +13,9 @@
 
 Captures live audio from your microphone and displays it as a real-time phosphor oscilloscope with four panels:
 
-- **Spectrum Analyzer** — FFT magnitude plot with peak hold and log/linear frequency axis
+- **Waveform** — main panel, triggered time-domain oscilloscope trace with amplitude and time zoom
 - **Waterfall** — scrolling spectrogram showing signal history over time
-- **Waveform** — triggered time-domain oscilloscope trace with RMS meter
+- **Spectrum Analyzer** — FFT magnitude plot with peak hold and log/linear frequency axis
 - **Filter Controls** — interactive filter bank with real-time parameter adjustment
 
 Four phosphor themes: **Green** (P31), **Amber** (P3), **Blue** (P7), **Night Vision** (red).
@@ -24,22 +24,22 @@ This project is the first half of a larger SDR (Software Defined Radio) build. W
 
 ---
 
-## Demo
+## Layout
 
 ```
 ┌─────────────────────────────────────────────┐
 │  SIGNAL MONITOR          SR:44kHz  FPS:60   │
 ├─────────────────────────────────────────────┤
 │                                             │
-│           SPECTRUM ANALYZER                 │
-│         FFT magnitude + peak hold           │
+│              WAVEFORM          (full width) │
+│         triggered trace + RMS meter         │
 │                                             │
 ├─────────────────────────────────────────────┤
-│         WATERFALL / SPECTROGRAM             │
+│         WATERFALL / SPECTROGRAM (full width)│
 │      (time flows downward, freq = x)        │
 ├──────────────────────┬──────────────────────┤
-│   WAVEFORM           │   FILTER BANK        │
-│   triggered trace    │   [1][2][3][4]       │
+│   SPECTRUM ANALYZER  │   FILTER BANK        │
+│   FFT + peak hold    │   [1][2][3][4]       │
 └──────────────────────┴──────────────────────┘
 ```
 
@@ -56,7 +56,7 @@ FilterBank       — lowpass / highpass / bandpass / notch (Butterworth IIR)
     ↓
 compute_fft      — windowed FFT → magnitude in dB
     ↓
-Pygame display   — spectrum + waterfall + waveform + controls at 60fps
+Pygame display   — waveform + waterfall + spectrum + controls at 60fps
 ```
 
 When RTL-SDR hardware arrives, `MicInput` → `RtlSdrInput`. Everything downstream is unchanged.
@@ -79,16 +79,16 @@ signal-monitor/
 │   │
 │   ├── display/
 │   │   ├── theme.py        # Phosphor themes, glow renderer, scan lines
-│   │   ├── spectrum.py     # FFT magnitude panel
+│   │   ├── waveform.py     # Time-domain oscilloscope trace (main panel)
 │   │   ├── waterfall.py    # Scrolling spectrogram (numpy pixel buffer)
-│   │   ├── waveform.py     # Time-domain oscilloscope trace
+│   │   ├── spectrum.py     # FFT magnitude panel
 │   │   └── controls.py     # Filter bank UI + key handling
 │   │
 │   └── main.py             # Entry point — wires everything together
 │
 ├── assets/
 │   └── fonts/
-│       ├── digital-7.ttf          # 7-segment display numbers
+│       ├── digital-7.ttf
 │       └── ShareTechMono-Regular.ttf
 │
 ├── environment.yml
@@ -138,14 +138,44 @@ Allow microphone access when prompted.
 
 ## Keybindings
 
+### Global
+
 | Key | Action |
 |-----|--------|
 | `ESC` / `Q` | Quit |
 | `F1` | Cycle phosphor theme |
+
+### Waveform (main panel)
+
+| Key | Action |
+|-----|--------|
+| `A` | Amplitude zoom in — boost Y scale, makes quiet signals fill the panel |
+| `S` | Amplitude zoom out — reduce Y scale |
+| `Z` | Time zoom in — fewer samples shown, more detail per cycle |
+| `X` | Time zoom out — more samples shown, more context |
+| `T` | Toggle trigger (stabilises periodic signals) |
+| `G` | Toggle amplitude grid |
+
+> **Tip:** Start talking and hit `A` until the waveform fills ~60% of the panel. That's the sweet spot for voice.
+
+### Spectrum
+
+| Key | Action |
+|-----|--------|
 | `L` | Toggle log / linear frequency axis |
-| `P` | Toggle peak hold (spectrum) |
-| `T` | Toggle trigger (waveform) |
-| `G` | Toggle amplitude grid (waveform) |
+| `P` | Toggle peak hold |
+
+### Waterfall
+
+| Key | Action |
+|-----|--------|
+| `L` | Toggle log / linear frequency axis |
+| `+` / `-` | Scroll speed |
+
+### Filter Controls
+
+| Key | Action |
+|-----|--------|
 | `1` `2` `3` `4` | Select filter slot |
 | `SPACE` | Toggle selected filter on/off |
 | `↑` `↓` | Adjust selected filter frequency |
@@ -160,7 +190,7 @@ Allow microphone access when prompted.
 Four pre-wired slots, all disabled by default:
 
 | Slot | Type | Default | Purpose |
-|------|------|---------|---------|
+|------|------|---------|---------| 
 | `[1]` | Highpass | 80 Hz | Remove mic rumble / DC offset |
 | `[2]` | Lowpass | 3400 Hz | Cut high-frequency hiss |
 | `[3]` | Bandpass | 80–3400 Hz | Telephone-quality voice band |
@@ -189,9 +219,9 @@ Each panel has a standalone smoke test with synthetic animated data:
 
 ```bash
 python -m src.display.theme     # all four themes side by side
-python -m src.display.spectrum  # animated FFT with drifting peaks
-python -m src.display.waveform  # triggered trace, clipping test
+python -m src.display.waveform  # triggered trace, clipping test, zoom
 python -m src.display.waterfall # drifting carrier + harmonic series
+python -m src.display.spectrum  # animated FFT with drifting peaks
 python -m src.display.controls  # filter bank UI
 ```
 
@@ -209,6 +239,7 @@ This project was built as a learning exercise. Concepts implemented from scratch
 - **Filter state** (`zi`) — continuous filtering across chunk boundaries
 - **Spectrogram** / waterfall display — numpy pixel buffer + `surfarray.blit_array`
 - **Oscilloscope triggering** — rising zero-crossing sync for stable waveform display
+- **Amplitude and time zoom** — independent Y and X axis scaling for waveform analysis
 - **Phosphor CRT simulation** — persistence, glow, scan lines, vignette
 
 ---
