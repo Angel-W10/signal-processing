@@ -66,13 +66,16 @@ class WaveformPanel:
 
     def __init__(
         self,
-        surface : pygame.Surface,
-        rect    : pygame.Rect,
-        theme   : BaseTheme,
+        surface  : pygame.Surface,
+        rect     : pygame.Rect,
+        theme    : BaseTheme,
+        zoom     : float = 0.4,   # fraction of chunk to display (0.1=very zoomed, 1.0=full)
     ):
         self.surface = surface
         self.rect    = rect
         self.theme   = theme
+        self.zoom    = zoom        # Z / X keys — time axis (fewer samples = more detail)
+        self.y_zoom  = 6.0         # A / S keys — amplitude axis (higher = more sensitive)
 
         # Feature toggles
         self.use_trigger  = True   # T key
@@ -113,6 +116,14 @@ class WaveformPanel:
         """Render the full panel to self.surface inside self.rect."""
         plot = self._plot_rect()
 
+        # ── Clear panel background ───────────────────────────────────────────
+        # Fill solid before drawing anything else. The waveform needs a clean
+        # slate every frame — unlike the waterfall (which redraws every pixel
+        # via numpy) the trace only draws the signal line, so without this
+        # old lines accumulate under the persistence overlay and the display
+        # looks frozen even when the signal is moving.
+        pygame.draw.rect(self.surface, self.theme.BG_PANEL, self.rect)
+
         # ── Grid ────────────────────────────────────────────────────────────
         if self.show_grid:
             self._draw_amplitude_grid(plot)
@@ -151,6 +162,14 @@ class WaveformPanel:
             self.use_trigger = not self.use_trigger
         elif event.key == pygame.K_g:
             self.show_grid = not self.show_grid
+        elif event.key == pygame.K_z:
+            self.zoom = max(0.05, self.zoom - 0.05)   # zoom in (time)
+        elif event.key == pygame.K_x:
+            self.zoom = min(1.0,  self.zoom + 0.05)   # zoom out (time)
+        elif event.key == pygame.K_a:
+            self.y_zoom = min(20.0, self.y_zoom + 0.5)  # boost amplitude
+        elif event.key == pygame.K_s:
+            self.y_zoom = max(1.0,  self.y_zoom - 0.5)  # reduce amplitude
 
     # ── Trigger ───────────────────────────────────────────────────────────────
 
@@ -193,24 +212,30 @@ class WaveformPanel:
         samples    = self._samples
         trig_idx   = self._find_trigger(samples)
 
-        # How many samples fit in the display window
-        n_display  = min(len(samples) - trig_idx, len(samples))
+        # How many samples to display — zoom controls this.
+        # zoom=1.0 shows the full chunk, zoom=0.4 shows the middle 40%
+        # giving a 2.5x magnification on the time axis.
+        n_display = max(2, int((len(samples) - trig_idx) * self.zoom))
         if n_display < 2:
             return []
 
         display_samples = samples[trig_idx : trig_idx + n_display]
         n               = len(display_samples)
 
-        half_h  = plot.height / 2
+        half_h   = plot.height / 2
         center_y = plot.y + half_h
         x_scale  = plot.width / n
+
+        # y_zoom scales the amplitude — y_zoom=1.0 shows full ±1.0 range,
+        # y_zoom=6.0 makes ±0.17 fill the panel (good for normal voice level).
+        # We clamp to plot bounds so loud sounds hit the edge rather than
+        # drawing outside the panel.
+        effective_scale = AMPLITUDE_SCALE * self.y_zoom
 
         points = []
         for i, sample in enumerate(display_samples):
             x = int(plot.x + i * x_scale)
-            # Flip: positive amplitude → upward → smaller y in Pygame
-            y = int(center_y - sample * half_h * AMPLITUDE_SCALE)
-            # Clamp to plot bounds — prevents drawing outside the panel
+            y = int(center_y - sample * half_h * effective_scale)
             y = max(plot.top, min(plot.bottom, y))
             points.append((x, y))
 
@@ -344,10 +369,11 @@ class WaveformPanel:
         """Draw panel title, trigger state, and live readouts."""
 
         trig_label = "TRIG:ON" if self.use_trigger else "TRIG:OFF"
+        zoom_pct   = int(self.zoom * 100)
         self.theme.draw_panel_label(
             self.surface, self.rect,
             "WAVEFORM",
-            f"/ TIME DOMAIN  [{trig_label}]  [T=trig  G=grid]"
+            f"/ TIME DOMAIN  [{trig_label}]  [X-ZOOM:{zoom_pct}%]  [Y-ZOOM:{self.y_zoom:.1f}x]  [Z/X=time  A/S=amp  T=trig  G=grid]"
         )
 
         # Live sample count and peak amplitude readout

@@ -18,12 +18,12 @@ Layout
     │            HEADER BAR                       │
     ├─────────────────────────────────────────────┤
     │                                             │
-    │           SPECTRUM ANALYZER                 │  40% height
+    │              WAVEFORM                       │  38% height
     │                                             │
     ├─────────────────────────────────────────────┤
-    │           WATERFALL                         │  28% height
+    │              WATERFALL                      │  28% height
     ├──────────────────────┬──────────────────────┤
-    │   WAVEFORM           │   FILTER CONTROLS    │  32% height
+    │   SPECTRUM           │   FILTER CONTROLS    │  34% height
     └──────────────────────┴──────────────────────┘
 
 Keybindings (global)
@@ -69,10 +69,12 @@ WINDOW_TITLE = "SIGNAL MONITOR  //  PHOSPHOR AUDIO ANALYZER"
 TARGET_FPS   = 60
 
 # Layout proportions (fractions of usable height below header)
+# Waveform is the main panel — sits at the top and gets the most space.
+# Spectrum moves to the bottom strip. Waterfall stays in the middle.
 HEADER_H      = 32
-SPECTRUM_FRAC = 0.38
+WAVEFORM_FRAC = 0.38
 WATERFALL_FRAC= 0.28
-BOTTOM_FRAC   = 1.0 - SPECTRUM_FRAC - WATERFALL_FRAC   # waveform + controls
+SPECTRUM_FRAC = 1.0 - WAVEFORM_FRAC - WATERFALL_FRAC
 
 
 # ─── Layout builder ───────────────────────────────────────────────────────────
@@ -81,26 +83,30 @@ def build_rects(w: int, h: int) -> dict[str, pygame.Rect]:
     """
     Compute panel rects from window dimensions.
     Called on startup and on window resize.
-    Returns a dict of named pygame.Rect objects.
+
+    Layout (top to bottom):
+      [        WAVEFORM          ]   full width  — 38%
+      [        WATERFALL         ]   full width  — 28%
+      [ SPECTRUM  |  CONTROLS ]      half + half — 34%
     """
     usable_h = h - HEADER_H
 
-    spectrum_h  = int(usable_h * SPECTRUM_FRAC)
+    waveform_h  = int(usable_h * WAVEFORM_FRAC)
     waterfall_h = int(usable_h * WATERFALL_FRAC)
-    bottom_h    = usable_h - spectrum_h - waterfall_h
+    bottom_h    = usable_h - waveform_h - waterfall_h
 
-    y_spec  = HEADER_H
-    y_water = y_spec  + spectrum_h
+    y_wave  = HEADER_H
+    y_water = y_wave  + waveform_h
     y_bot   = y_water + waterfall_h
 
     half_w = w // 2
 
     return {
-        "header"   : pygame.Rect(0,      0,      w,          HEADER_H),
-        "spectrum" : pygame.Rect(0,      y_spec, w,          spectrum_h),
-        "waterfall": pygame.Rect(0,      y_water,w,          waterfall_h),
-        "waveform" : pygame.Rect(0,      y_bot,  half_w,     bottom_h),
-        "controls" : pygame.Rect(half_w, y_bot,  w - half_w, bottom_h),
+        "header"   : pygame.Rect(0,      0,       w,          HEADER_H),
+        "waveform" : pygame.Rect(0,      y_wave,  w,          waveform_h),
+        "waterfall": pygame.Rect(0,      y_water, w,          waterfall_h),
+        "spectrum" : pygame.Rect(0,      y_bot,   half_w,     bottom_h),
+        "controls" : pygame.Rect(half_w, y_bot,   w - half_w, bottom_h),
     }
 
 
@@ -196,7 +202,8 @@ def main():
         screen, rects["waterfall"], theme, sample_rate=SAMPLE_RATE
     )
     waveform_panel  = WaveformPanel(
-        screen, rects["waveform"], theme
+        screen, rects["waveform"], theme,
+        zoom=0.4,   # show 40% of chunk = ~2.5x zoom on the time axis
     )
 
     def on_theme_change():
@@ -241,10 +248,10 @@ def main():
                 # Rebuild layout and update every panel's rect
                 W, H  = event.w, event.h
                 rects = build_rects(W, H)
-                spectrum_panel.rect  = rects["spectrum"]
+                waveform_panel.rect  = rects["waveform"]
                 waterfall_panel.rect = rects["waterfall"]
                 waterfall_panel._pixel_buf = None   # force buffer rebuild
-                waveform_panel.rect  = rects["waveform"]
+                spectrum_panel.rect  = rects["spectrum"]
                 controls_panel.rect  = rects["controls"]
 
             elif event.type == pygame.KEYDOWN:
@@ -263,7 +270,7 @@ def main():
                     consumed = controls_panel.handle_key(event)
                     if not consumed:
                         spectrum_panel.handle_key(event)   # L, P
-                        waveform_panel.handle_key(event)   # T, G
+                        waveform_panel.handle_key(event)   # T, G, Z, X
                         waterfall_panel.handle_key(event)  # L, +, -
 
         # ── Audio processing ──────────────────────────────────────────────────
